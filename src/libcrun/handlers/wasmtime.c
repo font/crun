@@ -50,6 +50,7 @@ libwasmtime_exec (void *cookie, libcrun_container_t *container arg_unused,
 {
   size_t args_size = 0;
   char *const *arg;
+  bool preopened = false;
   wasm_byte_vec_t error_message;
   wasm_byte_vec_t wasm_bytes;
   wasm_engine_t *(*wasm_engine_new) ();
@@ -99,7 +100,7 @@ libwasmtime_exec (void *cookie, libcrun_container_t *container arg_unused,
   void (*wasmtime_error_message) (const wasmtime_error_t *error, wasm_name_t *message);
   void (*wasmtime_error_delete) (wasmtime_error_t * error);
   bool (*wasi_config_preopen_dir) (wasi_config_t * config, const char *path, const char *guest_path);
-  bool (*wasi_config_preopen_socket) (wasi_config_t * config, const char *host_port);
+  bool (*wasi_config_preopen_socket) (wasi_config_t * config, uint32_t fd_num, const char *host_port);
 
   wasmtime_wat2wasm = dlsym (cookie, "wasmtime_wat2wasm");
   wasm_engine_new = dlsym (cookie, "wasm_engine_new");
@@ -210,8 +211,18 @@ libwasmtime_exec (void *cookie, libcrun_container_t *container arg_unused,
   wasi_config_inherit_stdin (wasi_config);
   wasi_config_inherit_stdout (wasi_config);
   wasi_config_inherit_stderr (wasi_config);
-  wasi_config_preopen_dir (wasi_config, ".", ".");
-  wasi_config_preopen_socket (wasi_config, "127.0.0.1:8080");
+  preopened = wasi_config_preopen_dir (wasi_config, ".", ".");
+  if (!preopened)
+    {
+      error (EXIT_FAILURE, 0, "failed to preopen directory: \"%s\"", ".");
+    }
+#define WASI_PREOPEN_SOCKET_FD 5
+#define WASI_PREOPEN_SOCKET_HOST "127.0.0.1:8081"
+  preopened = wasi_config_preopen_socket (wasi_config, WASI_PREOPEN_SOCKET_FD, WASI_PREOPEN_SOCKET_HOST);
+  if (!preopened)
+    {
+      error (EXIT_FAILURE, 0, "failed to preopen socket fd %d for host %s", WASI_PREOPEN_SOCKET_FD, WASI_PREOPEN_SOCKET_HOST);
+    }
   wasm_trap_t *trap = NULL;
   err = wasmtime_context_set_wasi (context, wasi_config);
   if (err != NULL)
